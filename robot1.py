@@ -109,7 +109,7 @@ def move_state( timer_event = None) :
 		transition( 0.2, start_state )
 
 	elif D.Vision_Mode == True :
-		D.tank(200, 200)
+		D.tank(D.speed, D.speed)
 		transition( 0.3, calc_heading_state)
 
 def turn_state( timer_event = None) :
@@ -127,13 +127,13 @@ def turn_state( timer_event = None) :
 			transition( 0.4, move_state )
 
 	elif D.Vision_Mode == True :
-		time = (5.0*abs(D.Turn_Angle)+.02)/6.28
+		time = (3*abs(D.Turn_Angle)+.02)/6.28
 		if D.Turn_Angle > 0 :
-			D.tank(120, -120)
+			D.tank(100, -100)
 			D.speed = 100
 			transition( time, move_state )
 		else :
-			D.tank(-120, 120)
+			D.tank(-100, 100)
 			D.speed = 100
 			transition( time, move_state )
 
