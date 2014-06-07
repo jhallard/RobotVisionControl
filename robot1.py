@@ -119,7 +119,6 @@ def move_state( timer_event = None) :
 	# if we are in manual command mode, set our speed and than revert to start_state to wait for another command
 	if D.Manual_Mode == True :
 		D.tank(D.speed, D.speed)
-		transition( 0.2, start_state )
 
 	# if we are in vision control mode we move forward and then proceed to a state to calculate our robots heading.
 	elif D.Vision_Mode == True :
@@ -160,9 +159,7 @@ def turn_state( timer_event = None) :
 def start_state( timer_event = None ) :
 	""" waits for start"""
 	global D
-
-	# stop the movement while we figure out what the user wants to do
-	#D.tank(0, 0)
+	D.tank(0, 0) # hold still while we figure out our first move
 	
 	# if we have our data stream connected we can start
 	if D.sdata != None :
@@ -172,9 +169,7 @@ def start_state( timer_event = None ) :
 			transition( 0.1, move_state )
 		
 		elif D.Manual_Mode == True :
-		# if none of the movement flags have been set by the keyboard callback function, go back to this state and wait for a command
-			if D.Forward != True and D.Back != True and D.Right != True and D.Left != True :
-				transition(0.1, start_state)
+			return # wait for the keyboard callback function to call the next state
 
 	# else we wait for the data stream to be connected by calling ourselves again
 	else:
@@ -222,9 +217,6 @@ def command_callback(data):
 	print "Command Received", message
 	speed = 120
 
-	# f starts the process running and returns to the beginning if needed
-	if message == 'f' :
-		transition(0.1, start_state)
 	# if the user wants to switch to command mode
 	if message == 'c' :
 		D.Manual_Mode = True
@@ -243,25 +235,18 @@ def command_callback(data):
 	if D.Manual_Mode == True :
 
 		if message == 'w' :
-			D.Forward = True
 			D.speed = +150
-			D.forward = False
 			transition(0.1, move_state)
 
 		elif message == 'a' :
-			D.Left = True
 			D.Turn_Angle = 30
-			D.Left = False
 			transition(0.05, turn_state)
 
 		elif message == 'd' :
-			D.Right = True
 			D.Turn_Angle = -30
-			D.Right = False
 			transition(0.05, turn_state)
 
 		elif message == 's' :
-			D.Back = True
 			D.speed = -150
 			D.Back = False
 			transition(0.1, move_state)
@@ -274,7 +259,7 @@ def command_callback(data):
 
 
 
-# this function recieves the sensor data from the robot, it is used to stop us if we bump into something or we detect a cliff face
+# this function receives the sensor data from the robot, it is used to stop us if we bump into something or we detect a cliff face
 def sensor_callback( data ):
 	D.sdata = data
 	leftside = data.cliffLeftSignal
@@ -299,9 +284,6 @@ def sensor_callback( data ):
 #####
 
 def init():
-	""" returns an object (tank) that allows you
-	   to set the velocities of the robot's wheels
-	"""
 	global D # to hold system state
 	
 
@@ -356,7 +338,7 @@ def init():
 	## Values that need to be knowjn to do computation. These include the current position, old position, goal position, target and heading vectors
 	# speed, turning angle, etc
 	D.Speed = 150
-	D.MAX_ANGLE_ERROR = 8.0*3.14/180.0   # maximum angl we can be off from the target and still go forward
+	D.MAX_ANGLE_ERROR = 8.0*3.14/180.0   # maximum angl we can be off from the target and still consider ourselves 'on-course'
 	D.MAX_DIST_ERROR = 20	# maximum distance we can be in pixels from the target before calling it a win
 	D.Turn_Angle = 25
 	D.theta_diff = 0
@@ -370,12 +352,7 @@ def init():
 
 
 def main():
-	""" the main program that gives our node a name,
-	   sets up service objects, subscribes to topics (with a callback),
-	   and then lets interactions happen!
-	"""
 	global D
-	print 'Press f to start process :'
 	# set up services and subscribe to data streams
 	init()
 
