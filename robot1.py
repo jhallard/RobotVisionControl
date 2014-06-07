@@ -323,13 +323,6 @@ def init():
 	D.Vision_Mode = False
 
 
-	# These Flags are set by the user when they use key presses to do manual commands
-	# they are used by the fSM in the transition function to know what to do next
-	D.Forward = False
-	D.Back = False
-	D.Right = False
-	D.Left = False
-
 	# Flags, these are used by our data subscriptions feeds to control program flow by letting the transistion function
 	# know if it needs to do something special during the transition, like switch modes or stop, etc
 	D.STOP_FLAG = False
