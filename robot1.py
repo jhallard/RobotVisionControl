@@ -20,12 +20,12 @@ D.sdata = None
 
 #####
 #####
-##	 Helper Functions, these functions help break up the state_functions into more modular peices.
+##	 Helper Functions, these functions help break up the state_functions into more modular pieces.
 #####
 #####
 
-# Transition, this function is called between states. It checks all of the flags to see if there are any interupts and 
-# then callls the next state function passed to it
+# Transition, this function is called between states. It checks all of the flags to see if there are any interrupts 
+#(user override signal, stop signal, win signal) and then calls the next state function passed to it
 def transition( time, next_state_fn ):
 	""" time is a float, next_state_fn is a function """
 	global D # our global data...
@@ -35,87 +35,106 @@ def transition( time, next_state_fn ):
 		print "Stopping FSM"
 		D.STOP_FLAG = False
 		return  # stops the FSM
-
-	# If we are in manual control mode, we query the manual movement flags to see what direction the user wants to move in
-	# we then set that up to be the next 
-	#if D.Manual_Mode == True :
+	# call the next state function after the given amount of time has passed
 	rospy.Timer( rospy.Duration(time), next_state_fn, oneshot=True )
 		
 
 		
 			
-
-			
-
-
-
-
-
 #####
 #####
 ##	  State Functions - these functions each act as one particular state for the robot
 #####
 #####
 
-def calc_heading_state( timer_event = None) :
+# this state calculates the heading of the robot based on the robots last path
+def adjust_heading_state( timer_event = None) :
+	# Heading vector = (dx, dy)
+	
+	D.tank(0, 0) #stop the robot from moving while we determine its progress and the next state to call
+	
 	D.heading_vector = [D.cur_pos[0]-D.old_pos[0], D.cur_pos[1]-D.old_pos[1]]
 	D.heading_angle = math.atan2(D.heading_vector[1], D.heading_vector[0])
+	
+	# tell the vision program our heading angle for it to display
 	D.H_PUB.publish(str(D.heading_angle))
 
+	# debugging artifacts
 	#print 'heading vector : ', D.heading_angle	
 	#print 'target vector : ', D.target_angle
 
-
-	while D.target_angle >= 6.28 :
-		D.target_angle = D.target_angle - 3.14159
-
-	while D.heading_angle >= 6.289 :
-		D.heading_angle -= 3.14159
-
+	# normalize the target angle to {0, 2pi}
+	while D.target_angle >= 2*3.14159 :
+		D.target_angle = D.target_angle - 3.14159*2
+	
+	# normalize the heading angle
+	while D.heading_angle >= 2*3.14159 :
+		D.heading_angle -= 2*3.14159
+	
+	# if our vectors are in the correct order proceed as normal
+	# (the target vector should be ahead of the heading vector)
 	if(D.target_angle > D.heading_angle) :
 		D.theta_diff = D.target_angle - D.heading_angle
-
+		
+		# if the angles are more than 180 degrees apart we go in the opposite direction
 		if D.theta_diff > 3.14159 :
 			D.theta_diff -= 2*3.14159
-
+			
+	# else subtract 2pi from the heading vector to maintain its position
+	# but to put it behind the target vector numerically
 	else :
 		D.heading_angle -= 2*3.14159
 		D.theta_diff = D.target_angle - D.heading_angle
-
+		
+		# if the angles are more than 180 degrees apart we go in the opposite direction
 		if D.theta_diff > 3.14159 :
 			D.theta_diff -= 2*3.14159
-
+	
+	# we set value of the angle that we need to rotate in order to align our heading with the target vector
 	D.Turn_Angle = D.theta_diff
-	#print 'theta_diff ', D.theta_diff
+	
+	#print 'theta_diff ', D.theta_diff  // checkpoint on the angle
+	
 	# now we make a decision on either moving forward or turning based on our heading vector and the target vector
+	# if we are off course by more than 8 degrees (max_angle_error), we go into a rotation state based on the angle diff
+	# between our current heading and desired heading
 	if abs(D.Turn_Angle) >= D.MAX_ANGLE_ERROR :
 		transition(0.1, turn_state)
+		
+	# otherwise we are facing within 8 degrees of our target and we go full speed ahead!
 	else :
 		D.speed = 200
 		transition(0.1, move_state)
 
 
 
-
+# this state moves the robot either forward or backward based on the D.speed global that is set by the calling function
 def move_state( timer_event = None) :
-	""" starts moving forward """
 	global D
 
-	# save the current position into our old position variable, then after we move we will call calc_heading_state 
+	# save the current position into our old position variable, then after we move we will call adjust_heading_state 
 	# and we will use our changed position to calculate the heading vector
 	D.old_pos = [D.cur_pos[0], D.cur_pos[1]]
+	
+	# if we are in manual command mode, set our speed and than revert to start_state to wait for another command
 	if D.Manual_Mode == True :
 		D.tank(D.speed, D.speed)
 		transition( 0.2, start_state )
 
+	# if we are in vision control mode we move forward and then proceed to a state to calculate our robots heading.
 	elif D.Vision_Mode == True :
 		D.tank(D.speed, D.speed)
-		transition( 0.3, calc_heading_state)
+		transition( 0.6, adjust_heading_state)
 
+		
+		
+		
+# this state makes the robot turn in either direction based on the D.turn_angle global variable. 
+##### -=TODO=- : Finish angle calibration, it is a little off currently
 def turn_state( timer_event = None) :
 	global D
 
-	# if we are in manual mode, turn the desired preset angle and then go back to the start_state to wait for commands
+	# if we are in manual mode, turn the desired pre-set angle and then go back to the start_state to wait for commands
 	if D.Manual_Mode == True :
 		if D.Turn_Angle > 0 :
 			D.tank(-120, 120)
@@ -147,24 +166,27 @@ def start_state( timer_event = None ) :
 	
 	# if we have our data stream connected we can start
 	if D.sdata != None :
-		# if we are in vision mode, start off by going forward
+		# if we are in vision mode, start off by going forward, then measure our heading to understand where we need to go
 		if D.Vision_Mode == True :
 			D.speed = 150
-			transition( 0.2, move_state )
+			transition( 0.1, move_state )
 		
 		elif D.Manual_Mode == True :
+		# if none of the movement flags have been set by the keyboard callback function, go back to this state and wait for a command
 			if D.Forward != True and D.Back != True and D.Right != True and D.Left != True :
 				transition(0.1, start_state)
 
 	# else we wait for the data stream to be connected by calling ourselves again
 	else:
 		transition( 0.1, start_state )
-		print 'here_sdata_none'
 
 
 def win_state( timer_event = None) :
 	print ' We have won!'
 	D.speed = 0
+	
+	# if we win then we go into manual control mode, the user can then pick a different goal and press
+	# 'v' to start up the vision control again
 	D.Manual_Mode = True
 	D.Vision_Mode = False
 	transition(0.05, start_state)
@@ -179,9 +201,9 @@ def win_state( timer_event = None) :
 def position_callback( data ) :
 	s = data.data
 	L = s.split()
-	D.cur_pos[0] = int(L[0])
-	D.cur_pos[1] = int(L[1])
-
+	D.cur_pos[0] = [int(L[0]), int(L[1])]
+	
+	# if our position is within 30 pixels of our goal, we won!
 	if abs(D.cur_pos[0] - D.goal[0]) < 30 and abs(D.cur_pos[1] - D.goal[1]) < 30 and D.Vision_Mode == True:
 		transition(0.05, win_state)
 
@@ -189,17 +211,15 @@ def position_callback( data ) :
 def goal_callback( data ) :
 	s = data.data
 	L = s.split()
-	D.goal[0] = int(L[0])
-	D.goal[1] = int(L[1])
+	D.goal = [int(L[0]), int(L[1])]
 	D.target_vector = [D.goal[0]-D.cur_pos[0], D.goal[1]-D.cur_pos[1]]
 	D.target_angle = math.atan2(D.target_vector[1], D.target_vector[0])
 		
 # This function is called when the user manually presses a key to control the robot or switch states
 def command_callback(data):
-	""" This function is called for each published message
-	"""
+
 	message = data.data
-	print "Command Recieved", message
+	print "Command Received", message
 	speed = 120
 
 	# f starts the process running and returns to the beginning if needed
@@ -219,6 +239,7 @@ def command_callback(data):
 
 
 	# if we are in manual mode we will set the next state flags
+	# then we will call the appropriate next state function
 	if D.Manual_Mode == True :
 
 		if message == 'w' :
@@ -229,13 +250,13 @@ def command_callback(data):
 
 		elif message == 'a' :
 			D.Left = True
-			D.Turn_Angle = 20
+			D.Turn_Angle = 30
 			D.Left = False
 			transition(0.05, turn_state)
 
 		elif message == 'd' :
 			D.Right = True
-			D.Turn_Angle = -20
+			D.Turn_Angle = -30
 			D.Right = False
 			transition(0.05, turn_state)
 
@@ -268,7 +289,7 @@ def sensor_callback( data ):
 		D.STOP_FLAG = True
 
 	if bumpleft == True or bumpright == True :
-		D.BUMP_GLAG = True
+		D.BUMP_FLAG = True
 
 
 #####
@@ -321,7 +342,7 @@ def init():
 
 
 	# These Flags are set by the user when they use key presses to do manual commands
-	# they are used by the fSM in teh transition function to know what to do next
+	# they are used by the fSM in the transition function to know what to do next
 	D.Forward = False
 	D.Back = False
 	D.Right = False
