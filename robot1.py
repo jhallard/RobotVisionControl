@@ -32,6 +32,7 @@ def transition( time, next_state_fn ):
 
 	# check if we need to stop...
 	if D.STOP_FLAG == True:
+		D.tank(0, 0)
 		print "Stopping FSM"
 		D.STOP_FLAG = False
 		return  # stops the FSM
@@ -123,7 +124,7 @@ def move_state( timer_event = None) :
 	# if we are in vision control mode we move forward and then proceed to a state to calculate our robots heading.
 	elif D.Vision_Mode == True :
 		D.tank(D.speed, D.speed)
-		transition( 0.6, adjust_heading_state)
+		transition( 0.5, adjust_heading_state)
 
 		
 		
@@ -148,11 +149,11 @@ def turn_state( timer_event = None) :
 		time = (3*abs(D.Turn_Angle)+.02)/6.28
 		if D.Turn_Angle > 0 :
 			D.tank(100, -100)
-			D.speed = 100
+			D.speed = 200
 			transition( time, move_state )
 		else :
 			D.tank(-100, 100)
-			D.speed = 100
+			D.speed = 200
 			transition( time, move_state )
 
 
@@ -196,7 +197,7 @@ def win_state( timer_event = None) :
 def position_callback( data ) :
 	s = data.data
 	L = s.split()
-	D.cur_pos[0] = [int(L[0]), int(L[1])]
+	D.cur_pos = [int(L[0]), int(L[1])]
 	
 	# if our position is within 30 pixels of our goal, we won!
 	if abs(D.cur_pos[0] - D.goal[0]) < 30 and abs(D.cur_pos[1] - D.goal[1]) < 30 and D.Vision_Mode == True:
